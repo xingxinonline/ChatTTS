@@ -5,6 +5,10 @@ import random
 import numpy as np
 import pybase16384 as b14
 import sounddevice as sd
+from pypinyin import pinyin, Style
+
+# 设置循环次数变量
+num_iterations = 35
 
 # 指定文件夹路径
 folder_path = "g:/workspace/kws/chattts_pt/"
@@ -61,6 +65,11 @@ def clean_filename(filename):
     cleaned_name = cleaned_name.replace(' ', '')
     return cleaned_name
 
+# 将中文字符替换为拼音
+def chinese_to_pinyin(text):
+    # 将中文转换为拼音并用下划线连接
+    pinyin_text = ''.join([word[0] for word in pinyin(text, style=Style.NORMAL)])
+    return pinyin_text
 
 logger = get_logger("Command")
 
@@ -85,16 +94,11 @@ def main(texts: List[str], spk: Optional[str] = None, stream=False):
         logger.error("Models load failed.")
         sys.exit(1)
     # spk = torch.load(selected_file_path,
-                    #  map_location=torch.device('cpu')).detach()
+                    #   map_location=torch.device('cpu')).detach()
     # 如果文件列表不为空，则遍历所有文件
     if pt_files:
         for selected_file in pt_files:
-            # 生成 0 到 7 之间的随机整数
-            random_break = random.randint(0, 7)
-            print(f"Random break: {random_break}")
-            # 生成 0 到 9 之间的随机整数
-            random_speed = random.randint(0, 8)
-            print(f"Random speed: {random_speed}")
+            
             selected_file_path = os.path.join(folder_path, selected_file)
             
             # 加载每个文件并进行操作
@@ -106,59 +110,88 @@ def main(texts: List[str], spk: Optional[str] = None, stream=False):
                 spk = chat.sample_random_speaker()
             logger.info("Use speaker:")
             print(spk)
-
-            logger.info("Start inference.")
-            texts = chat.infer(
-                texts,
-                skip_refine_text=False,
-                refine_text_only=True,
-                params_refine_text=ChatTTS.Chat.RefineTextParams(
-                    prompt=f'[oral_0][laugh_0][break_{random_break}]',
-                )
-            )
-            logger.info("Text output: %s", str(texts)) 
+            
             # 创建与 .pt 文件同名的文件夹
             output_dir = os.path.join(now_dir, os.path.splitext(selected_file)[0])
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
-            wavs = chat.infer(
-                texts,
-                stream,
-                skip_refine_text=True,
-                # refine_text_only=True,
-                params_infer_code=ChatTTS.Chat.InferCodeParams(
-                    prompt=f'[speed_{random_speed}]',
-                    temperature=0.0003,  # using custom temperature
-                    top_P=0.7,  # top P decode
-                    top_K=20,  # top K decode
-                    spk_emb=spk_emb_str,
-                ),
-            )
-            logger.info("Inference completed.")
-            # Save each generated wav file to a local file
-            if stream:
-                wavs_list = []
-            for index, wav in enumerate(wavs):
-                if stream:
-                    for i, w in enumerate(wav):
-                        save_mp3_file(w, (i + 1) * 1000 + index)
-                    wavs_list.append(wav)
-                else:
-                    # 假设 `texts[index]` 是原始文件名的一部分
-                    original_filename = f"{texts[index]}.wav"
-                    cleaned_filename = clean_filename(original_filename)
-                    # 构建保存路径
-                    output_wav_path = os.path.join(output_dir, cleaned_filename)
+                
+            # 创建日志文件
+            log_file_path = os.path.join(output_dir, "log.txt")
+            with open(log_file_path, "a") as log_file:
+                
+                # 使用 .pt 文件名称作为前缀
+                pt_file_prefix = os.path.splitext(selected_file)[0]
+                logger.info("Start inference.")
+                for i in range(1, num_iterations + 1):
+                
+                    # 生成 0 到 7 之间的随机整数
+                    random_break = random.randint(0, 3)
+                    print(f"Random break: {random_break}")
+                    # 生成 0 到 9 之间的随机整数
+                    random_speed = random.randint(0, 5)
+                    print(f"Random speed: {random_speed}")
+                    
+                    # 记录生成的参数到日志文件
+                    log_file.write(f"Iteration {i}: break_{random_break}, speed_{random_speed}\n")
+                    log_file.flush()  # 确保内容及时写入文件
+                    
+                    texts = chat.infer(
+                        texts,
+                        skip_refine_text=False,
+                        refine_text_only=True,
+                        params_refine_text=ChatTTS.Chat.RefineTextParams(
+                            prompt=f'[oral_0][laugh_0][break_{random_break}]',
+                        )
+                    )
+                    logger.info("Text output: %s", str(texts)) 
+                    
+                    wavs = chat.infer(
+                        texts,
+                        stream,
+                        skip_refine_text=True,
+                        # refine_text_only=True,
+                        params_infer_code=ChatTTS.Chat.InferCodeParams(
+                            prompt=f'[speed_{random_speed}]',
+                            temperature=0.0003,  # using custom temperature
+                            top_P=0.7,  # top P decode
+                            top_K=20,  # top K decode
+                            spk_emb=spk_emb_str,
+                        ),
+                    )
+                    logger.info("Inference completed.")
+                    # Save each generated wav file to a local file
+                    if stream:
+                        wavs_list = []
+                    for index, wav in enumerate(wavs):
+                        
+                        if stream:
+                            for i, w in enumerate(wav):
+                                save_mp3_file(w, (i + 1) * 1000 + index)
+                            wavs_list.append(wav)
+                        else:
+                            # 清理文件名并添加 .pt 文件前缀和遍历的序号
+                            original_filename = f"{texts[index]}"
+                            cleaned_filename = clean_filename(original_filename)
+                            final_filename = f"{pt_file_prefix}_{chinese_to_pinyin(cleaned_filename)}_{i}.wav"
 
-                    # 播放音频
-                    sd.play(wav, samplerate=24000)
-                    sd.wait()  # 等待播放结束
+                            # 构建保存路径，检查是否存在相应的文件夹
+                            final_folder_name = f"{cleaned_filename}"
+                            output_wav_folder = os.path.join(output_dir, final_folder_name)
+                            if not os.path.exists(output_wav_folder):
+                                os.makedirs(output_wav_folder)
+                                
+                            output_wav_path = os.path.join(output_wav_folder, final_filename)
 
-                    # 将音频保存为 WAV 文件
-                    scipy.io.wavfile.write(filename=output_wav_path, rate=24000, data=wav.T)
-            if stream:
-                for index, wav in enumerate(np.concatenate(wavs_list, axis=1)):
-                    save_mp3_file(wav, index)
+                            # 播放音频
+                            sd.play(wav, samplerate=24000)
+                            sd.wait()  # 等待播放结束
+
+                            # 将音频保存为 WAV 文件
+                            scipy.io.wavfile.write(filename=output_wav_path, rate=24_000, data=wav.T)
+                    if stream:
+                        for index, wav in enumerate(np.concatenate(wavs_list, axis=1)):
+                            save_mp3_file(wav, index)
             logger.info("Audio generation successful.")
     else:
         print("No .pt files found in the specified directory.")
