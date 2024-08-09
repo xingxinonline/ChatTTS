@@ -129,7 +129,7 @@ def main(texts: List[str], spk: Optional[str] = None, stream=False):
                     random_break = random.randint(0, 3)
                     print(f"Random break: {random_break}")
                     # 生成 0 到 9 之间的随机整数
-                    random_speed = random.randint(0, 5)
+                    random_speed = random.randint(0, 3)
                     print(f"Random speed: {random_speed}")
                     
                     # 记录生成的参数到日志文件
