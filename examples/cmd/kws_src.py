@@ -3,7 +3,7 @@ import torch
 import lzma
 import numpy as np
 import pybase16384 as b14
-
+import sounddevice as sd
 
 def compress_and_encode(tensor):
     np_array = tensor.numpy().astype(np.float16)
@@ -38,6 +38,7 @@ def save_mp3_file(wav, index):
         f.write(data)
     logger.info(f"Audio saved to {mp3_filename}")
 
+import scipy
 
 def main(texts: List[str], spk: Optional[str] = None, stream=False):
     logger.info("Text input: %s", str(texts))
@@ -63,7 +64,7 @@ def main(texts: List[str], spk: Optional[str] = None, stream=False):
         skip_refine_text=False,
         refine_text_only=True,
         params_refine_text=ChatTTS.Chat.RefineTextParams(
-            prompt='[oral_0][laugh_0][break_5]',
+            prompt='[oral_0][laugh_0][break_2]',
         )
     )
     logger.info("Text output: %s", str(texts)) 
@@ -73,7 +74,7 @@ def main(texts: List[str], spk: Optional[str] = None, stream=False):
         skip_refine_text=True,
         # refine_text_only=True,
         params_infer_code=ChatTTS.Chat.InferCodeParams(
-            prompt='[speed_9]',
+            prompt='[speed_1]',
             temperature=0.0003,  # using custom temperature
             top_P=0.7,  # top P decode
             top_K=20,  # top K decode
@@ -90,7 +91,11 @@ def main(texts: List[str], spk: Optional[str] = None, stream=False):
                 save_mp3_file(w, (i + 1) * 1000 + index)
             wavs_list.append(wav)
         else:
-            save_mp3_file(wav, index)
+            # save_mp3_file(wav, index)
+            # 播放音频
+            sd.play(wav, samplerate=24000)
+            sd.wait()  # 等待播放结束
+            scipy.io.wavfile.write(filename = f"output_audio_{index}.wav", rate = 24_000, data = wav.T)
     if stream:
         for index, wav in enumerate(np.concatenate(wavs_list, axis=1)):
             save_mp3_file(wav, index)
